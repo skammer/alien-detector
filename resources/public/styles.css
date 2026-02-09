@@ -1,0 +1,13 @@
+@font-face {
+  font-family: "Departure Mono";
+  src: url("/public/departuremono/DepartureMono-Regular.woff2") format("woff2"),
+  url("/public/departuremono/DepartureMono-Regular.woff") format("woff"),
+  url("/public/departuremono/DepartureMono-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+body {
+  font-family: "Departure Mono";
+}

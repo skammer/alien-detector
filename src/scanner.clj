@@ -1,5 +1,6 @@
-(ns hello-httpkit
+(ns scanner
   (:require
+   [ascii-parser]
    [charred.api]
    [clojure.java.io :as io]
    [dev.onionpancakes.chassis.compiler :as hc]
@@ -11,6 +12,22 @@
    [starfederation.datastar.clojure.adapter.http-kit :refer [->sse-response on-open]]
    [starfederation.datastar.clojure.api :as d*]))
 
+
+(def invader-directory (io/file "known-invaders/"))
+(def invader-files (filter #(.isFile %) (file-seq invader-directory)))
+(def invaders
+  (map (fn [file]
+         (ascii-parser/parse-file (.getAbsolutePath file)))
+       invader-files))
+
+(def scan-directory (io/file "radar-scans/"))
+(def scan-files (filter #(.isFile %) (file-seq scan-directory)))
+(def radar-scan
+  (doall (ascii-parser/parse-file (first scan-files))) )
+
+; (println radar-scan)
+
+
 (def PORT 8099)
 
 (def read-json (charred.api/parse-json-fn {:async? false :bufsize 1024}))
@@ -18,11 +35,11 @@
 (defn get-signals [req]
   (-> req d*/get-signals read-json))
 
-(def home-page
-  (slurp (io/resource "hello-world.html")))
+(def index-page
+  (slurp (io/resource "index.html")))
 
 (defn home [_]
-  (-> home-page
+  (-> index-page
       (ring.util.response/response)
       (ring.util.response/content-type "text/html")))
 
@@ -32,22 +49,33 @@
   (h/html
    (hc/compile
     [:div {:id "message"}
-     (subs message 0 (inc i))])))
+     [:pre (str i)]
+     [:div {:class "text-white text-[5px]"}
+      (for [line radar-scan]
+        (into
+         [:div {:class "flex flex-row"}]
+         (for [c line]
+           [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1"
+                          (if c "bg-white" "bg-black")
+                          ]}]
+           )))]])))
 
-(defn hello-world [request]
+(defn scan [request]
   (let [d (-> request get-signals (get "delay") int)]
-    (->sse-response request
-                    {on-open
-                     (fn [sse]
-                       (d*/with-open-sse sse
-                         (dotimes [i (count message)]
-                           (d*/patch-elements! sse (->frag i))
-                           (Thread/sleep d))))})))
+    (->sse-response
+     request
+     {on-open
+      (fn [sse]
+        (d*/with-open-sse sse
+          (dotimes [i (count message)]
+            (d*/patch-elements! sse (->frag i))
+            (Thread/sleep d))))})))
 
 (def routes
   [["/" {:handler home}]
-   ["/hello-world" {:handler hello-world
-                    :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]])
+   ["/scan" {:handler scan
+                    :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]
+   ["/public/*" (reitit.ring/create-resource-handler)]])
 
 (def router (reitit.ring/router routes))
 

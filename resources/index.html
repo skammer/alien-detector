@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Space radar</title>
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
+    <link rel="stylesheet" type="text/css" href="/public/styles.css" media="screen" />
+</head>
+<body class="bg-black text-white text-lg m-16 p-8">
+    <div data-signals:delay="3000" class="">
+        <div class="flex justify-between items-center">
+            <h1 class="text-5xl mb-5">
+                ALIEN INVASION EARLY WARNING SYSTEM
+                <br/>
+                <small class="text-lg opacity-50">observation post #459_183/16</small>
+            </h1>
+        </div>
+        <button
+            data-on:click="@get(&#39;/scan&#39;)"
+            class="bg-white px-5 py-2.5 leading-5 font-semibold text-black hover:bg-amber-700 hover:text-white cursor-pointer">
+            Scan
+        </button>
+    </div>
+    <div class="my-16">
+        <div id="message">
+          <h2 class="opacity-80">[ NOT SCANNING ]</h2>
+          <p class="opacity-40 text-sm">Failing to scan for active alien threats while on duty is punishable by law
+            <br/>
+            (United Federation of Planets Space Safety Codex, article 49, paragraph 7)</p>
+        </div>
+    </div>
+</body>
+</html>
