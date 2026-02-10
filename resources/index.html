@@ -7,6 +7,20 @@
     <link rel="stylesheet" type="text/css" href="/public/styles.css" media="screen" />
 </head>
 <body class="bg-black text-white text-lg m-16 p-8 min-w-[1069px]">
+
+    <div>
+      <audio id="loadingsound">
+        <source src="/public/sounds/Im_A_Computer.wav" />
+      </audio>
+      <audio id="pingsound">
+        <source src="/public/sounds/584179__unfa__radar.flac" />
+      </audio>
+    </div>
+
+    <script>
+      loadingsound.play();
+    </script>
+
     <div data-signals:delay="3000" class="">
         <div class="flex justify-between items-center">
             <h1 class="text-5xl mb-5">
@@ -22,28 +36,42 @@
             </h1>
         </div>
         <button
-            data-on:click="@get(&#39;/scan&#39;)"
+            id="connectbutton"
+            data-on:click="@get(&#39;/connect&#39;)"
             class="bg-white px-5 py-2.5 leading-5 font-semibold text-black hover:bg-amber-700 hover:text-white cursor-pointer">
+            Connect
+        </button>
+        <button
+            id="scanbutton"
+            data-on:click="@get(&#39;/scan&#39;)"
+            class="bg-white px-5 py-2.5 leading-5 font-semibold text-black hover:bg-amber-700 hover:text-white cursor-pointer hidden">
             Scan
         </button>
     </div>
-    <div class="my-16 flex flex-row gap-10">
-        <div id="scanner" class="w-[70%]">
+    <div class="my-16 flex flex-row gap-10 relative">
+        <div id="scanner" class="w-[800px] h-[400px]">
           <h2 class="opacity-80">[ NOT SCANNING ]</h2>
           <p class="opacity-40 text-sm">Failing to scan for active alien threats while on duty is punishable by law
             <br/>
-            (United Federation of Planets Space Safety Codex, article 49, paragraph 7)</p>
+            (United Federation of Planets Space Safety Codex, article 49, paragraph 7)
+          </p>
         </div>
-        <div class="invaders w-[30%] flex flex-col">
+        <div id="scan-overlay" class="absolute top-0 left-0 w-[800px] h-[400px]"></div>
+        <div class="invaders grow grow-1 flex flex-col">
           <div class="h-1/2 overflow-hidden flex flex-col">
             <h3>Known invaders</h3>
             <div id="known-invaders">
+              <p class="opacity-40 text-sm">
+                [ EMPTY ]
+              </p>
             </div>
           </div>
           <div class="h-1/2 overflow-hidden flex flex-col">
             <h3>Targets</h3>
             <div id="identified-invaders">
-              1<br/>2<br/>3
+              <p class="opacity-40 text-sm">
+                [ EMPTY ]
+              </p>
             </div>
           </div>
         </div>
