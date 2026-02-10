@@ -27,6 +27,19 @@
 
 ; (println radar-scan)
 
+;; TODO:
+;; * add connection pool
+;; * function to push d* events to connection pool
+;; * animations?
+
+;; Scan:
+;; * pad
+;; * start matching
+;; * compare threshold
+;; * mark all pixels as match if above threshold
+;; * draw heat map
+;; * find peaks, save as probable locations
+
 
 (def PORT 8099)
 
@@ -45,11 +58,10 @@
 
 (def message "Hello, world!")
 
-(defn ->frag [i]
+(defn ->scanner [i]
   (h/html
    (hc/compile
-    [:div {:id "message"}
-     [:pre (str i)]
+    [:div {:id "scanner"}
      [:div {:class "text-white text-[5px]"}
       (for [line radar-scan]
         (into
@@ -58,7 +70,21 @@
            [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1"
                           (if c "bg-white" "bg-black")
                           ]}]
-           )))]])))
+           )))]
+     [:pre (str i)]])))
+
+(defn ->known-invaders []
+  (h/html
+   (hc/compile
+    [:div {:id "known-invaders" :class "flex flex-row flex-wrap overflow-y-scroll"}
+     (for [invader invaders]
+       [:div {:class "text-white text-[5px] p-2"}
+        (for [line invader]
+          (into
+           [:div {:class "flex flex-row"}]
+           (for [c line]
+             [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1"
+                            (if c "bg-white" "bg-black")]}])))])])))
 
 (defn scan [request]
   (let [d (-> request get-signals (get "delay") int)]
@@ -67,14 +93,13 @@
      {on-open
       (fn [sse]
         (d*/with-open-sse sse
-          (dotimes [i (count message)]
-            (d*/patch-elements! sse (->frag i))
-            (Thread/sleep d))))})))
+          (d*/patch-elements! sse (->known-invaders))
+          (d*/patch-elements! sse (->scanner 0))))})))
 
 (def routes
   [["/" {:handler home}]
-   ["/scan" {:handler scan
-                    :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]
+   ["/scan" {:handler    scan
+             :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]
    ["/public/*" (reitit.ring/create-resource-handler)]])
 
 (def router (reitit.ring/router routes))

@@ -6,11 +6,17 @@
     <script type="module" src="https://cdn.jsdelivr.net/gh/starfederation/datastar@main/bundles/datastar.js"></script>
     <link rel="stylesheet" type="text/css" href="/public/styles.css" media="screen" />
 </head>
-<body class="bg-black text-white text-lg m-16 p-8">
+<body class="bg-black text-white text-lg m-16 p-8 min-w-[1069px]">
     <div data-signals:delay="3000" class="">
         <div class="flex justify-between items-center">
             <h1 class="text-5xl mb-5">
                 ALIEN INVASION EARLY WARNING SYSTEM
+
+                <span class="ring-container">
+                  <span class="ringring"></span>
+                  <span class="circle"></span>
+                </span>
+
                 <br/>
                 <small class="text-lg opacity-50">observation post #459_183/16</small>
             </h1>
@@ -21,12 +27,25 @@
             Scan
         </button>
     </div>
-    <div class="my-16">
-        <div id="message">
+    <div class="my-16 flex flex-row gap-10">
+        <div id="scanner" class="w-[70%]">
           <h2 class="opacity-80">[ NOT SCANNING ]</h2>
           <p class="opacity-40 text-sm">Failing to scan for active alien threats while on duty is punishable by law
             <br/>
             (United Federation of Planets Space Safety Codex, article 49, paragraph 7)</p>
+        </div>
+        <div class="invaders w-[30%] flex flex-col">
+          <div class="h-1/2 overflow-hidden flex flex-col">
+            <h3>Known invaders</h3>
+            <div id="known-invaders">
+            </div>
+          </div>
+          <div class="h-1/2 overflow-hidden flex flex-col">
+            <h3>Targets</h3>
+            <div id="identified-invaders">
+              1<br/>2<br/>3
+            </div>
+          </div>
         </div>
     </div>
 </body>
