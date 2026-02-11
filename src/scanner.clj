@@ -41,7 +41,6 @@
 (def radar-scan
   (doall (ascii-parser/parse-file (first scan-files))) )
 
-
 ;; Initialize invaders DB
 (parse-invaders)
 
@@ -57,18 +56,6 @@
 (comment
  (beholder/stop invader-watcher))
 
-;; Scan:
-;; * pad
-;; * iterate offset
-;; * get chunk from matrix
-;; * compare chunk with invader
-;; * chec if above threshold
-;; * write chunk to detections matrix
-;; * trim detection matrix
-;; * draw heat map from detection matrix
-;; * find peaks, save as probable locations
-
-
 (defn initialize-zero [matrix]
   (let [h (count matrix)
         w (count (first matrix))]
@@ -76,7 +63,8 @@
 
 (defn get-matrix-chunk [matrix x-offset y-offset x-size y-size]
   (let [;; first crop off the top and left bits we don't need
-        trimmed-top-left (ascii-parser/trim-around matrix (dec y-offset) 0 0 (dec x-offset))
+        trimmed-top-left (ascii-parser/trim-around
+                          matrix (dec y-offset) 0 0 (dec x-offset))
         ;; now trim the bottom rows
         necessary-rows (take y-size trimmed-top-left)]
     ;; and now just take the necessary row elements
@@ -88,19 +76,25 @@
    (let [template' (flatten template)
          source' (flatten source)
 
-         matches (map-indexed (fn [idx t]
-                                (let [s (nth source' idx)]
-                                  ;; Potentially need to use some sort of tiered matching algorithm, taking into account
-                                  ;; the nature of the radar noise (maybe false positives are much more probable than false
-                                  ;; negatives? no idea)
-                                  (cond
-                                   ;; if template bit is high and it matches the source, it's the highest match possible
-                                   (and t (= t s)) 1
-                                   ;; if both template and detected bit are low and we expected low, also high match
-                                   (and (not t) (= t s)) 1
-                                   ;; all other cases we consider a miss
-                                   :else 0)))
-                              template')
+         matches (map-indexed
+                  (fn [idx t]
+                    (let [s (nth source' idx)]
+                      ;; Potentially need to use some sort of tiered matching
+                      ;; algorithm, taking into account the nature of the radar
+                      ;; noise (maybe false positives are much more probable
+                      ;; than false negatives? no idea)
+                      (cond
+                       ;; if template bit is high and it matches the source,
+                       ;; it's the highest match possible
+                       (and t (= t s)) 1
+                       ;; if both template and detected bit are low and we
+                       ;; expected low, also high match
+                       (and (not t) (= t s)) 1
+                       ;; Padded values match at 10% just in any case
+                       (nil? s) 0.1
+                       ;; all other cases we consider a miss
+                       :else 0)))
+                  template')
 
          template-bits (count template')
          matched-bits (apply + matches)]
@@ -114,31 +108,45 @@
      0)))
 
 
-(defn update-detection-matrix [detection-matrix offset-x offset-y size-x size-y]
+(defn update-detection-matrix
+  [detection-matrix offset-x offset-y size-x size-y]
   (let [h (count detection-matrix)
         w (count (first detection-matrix))
 
         flat-list (flatten detection-matrix)
 
-        updated-list (map-indexed (fn [idx el]
-                                    (let [current-row (int (/ idx w))
-                                          matching-row (and (<= offset-y current-row)
-                                                            (> (+ offset-y size-y) current-row))
-                                          current-col (mod idx w)
-                                          matching-col (and (<= offset-x current-col)
-                                                            (> (+ offset-x size-x) current-col))]
-                                      (if (and matching-row matching-col)
-                                        (inc el)
-                                        el)))
-                                  flat-list)]
+        updated-list (map-indexed
+                      (fn [idx el]
+                        (let [current-row (int (/ idx w))
+                              matching-row (and (<= offset-y current-row)
+                                                (> (+ offset-y size-y) current-row))
+                              current-col (mod idx w)
+                              matching-col (and (<= offset-x current-col)
+                                                (> (+ offset-x size-x) current-col))]
+                          (if (and matching-row matching-col)
+                            (inc el)
+                            el)))
+                      flat-list)]
     (partition w updated-list)))
 
 (comment
- (update-detection-matrix [[0 0 0 0] [0 0 0 0] [0 0 0 0] [0 0 0 0]] 2 1 2 2))
+ (= '((0 0 0 0) (0 0 1 1) (0 0 1 1) (0 0 0 0))
+    (update-detection-matrix [[0 0 0 0] [0 0 0 0] [0 0 0 0] [0 0 0 0]] 2 1 2 2)))
 
 
-(defonce tmp (atom #{}))
+(defn sum-matrices [& matrices]
+  (let [w (count (first (first matrices)))
+        flattened (map flatten matrices)
+        sum (apply map + flattened)]
+    (partition w sum)))
 
+(comment
+ (= [[2 2] [3 3] [4 4]]
+    (sum-matrices [[1 1] [2 2] [3 3]]
+                  [[1 1] [1 1] [1 1]])))
+
+;; THIS IS SO SLOW!!!!
+;; TODO: parallelize column loop as well
 (defn detect [matrix invader]
   (let [invader-h (count invader)
         invader-w (count (first invader))
@@ -148,41 +156,38 @@
         matrix' (ascii-parser/pad-around matrix (dec invader-h) (dec invader-w))
 
         detections (initialize-zero matrix')
-        
-        detection-matrix (reduce (fn [det row-idx]
-                                   ;; go row by row, comparing invader with matrix chunks
 
-                                   (reduce (fn [det col-idx]
-                                             (let [chunk (get-matrix-chunk matrix' col-idx row-idx invader-w invader-h)
-                                                   similarity (compare-chunks invader chunk)
-                                                   threshold 0.8]
-                                               ; det
-                                               (if (> similarity threshold)
-                                                 ;; TODO: only update high bits of the invader template
-                                                 ;; This way we can get cleaner output match image
-                                                 ;; TODO: store match location in an atom for later
-                                                 (update-detection-matrix det col-idx row-idx invader-w invader-h)
-                                                 det)))
-                                           det
-                                           (range (- (count (first matrix')) invader-w))))
-                                 detections
-                                 (range (- (count matrix') invader-h)))]
+        detection-matrices (pmap
+                            (fn [row-idx]
+                              ;; go row by row, comparing invader with matrix chunks
+                              (reduce (fn [det col-idx]
+                                        (let [chunk (get-matrix-chunk matrix' col-idx row-idx invader-w invader-h)
+                                              similarity (compare-chunks invader chunk)
+                                              threshold 0.8]
+                                          (if (> similarity threshold)
+                                            ;; TODO: only update high bits of the invader template
+                                            ;; This way we can get cleaner output match image
+
+                                            ;; TODO: store match location in an atom for later (invader, location)
+                                            (update-detection-matrix det col-idx row-idx invader-w invader-h)
+                                            det)))
+                                      detections
+                                      (range (- (count (first matrix')) invader-w))))
+                            (range (- (count matrix') invader-h)))
+
+        detection-matrix (apply sum-matrices detection-matrices)]
 
     (ascii-parser/trim-around detection-matrix (dec invader-h) (dec invader-w))))
 
 (defn a []
   (detect radar-scan (first @invaders))
-  "ok"
-  )
+  "ok")
 
 (comment
  (a))
 
-(println (sort @tmp))
 
-
-
-
+;; TODO: use env var with fallback
 (def PORT 8099)
 
 (def read-json (charred.api/parse-json-fn {:async? false :bufsize 1024}))
@@ -208,28 +213,35 @@
     (h/html
      (hc/compile
       [:div {:id "scanner" :class "w-[800px] h-[400px]"}
-       [:div {:class "text-white text-[5px]"}
-        (for [line radar-scan]
-          (into
-           [:div {:class "flex flex-row"}]
-           (for [c line]
-             [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1"
-                            (if c "bg-white" "bg-black") ]}])))]
+       [:scan-canvas {:width 800 :height 400 :pixel-size 8 :base-color "#ffffff"
+                      :pixels (mapv (fn [px] (if px 1 0)) (flatten radar-scan))}]
+
        [:pre {:class "opacity-40 text-sm mt-1"} (sha1-hash (str total-dots))]]))))
 
+(def colors
+  ["#FFD166"
+   "#00F5FF"
+  "#3AFF7A"
+  "#FF4D6D"
+  "#7B61FF"
+  "#5C677D"])
+
+(defn get-color [idx]
+  (let [total-colors (count colors)
+        color-index (rem idx total-colors)]
+    (nth colors color-index)))
+
 (defn ->detections-overlay []
-  (let [detections (detect radar-scan (first @invaders))]
+  (let [detections (map (partial detect radar-scan) @invaders)]
     (h/html
      (hc/compile
-      [:div {:id "scan-overlay" :class "absolute top-0 left-0 "}
-       [:div {:class "text-amber-700 text-[5px]"}
-        (for [line detections]
-          (into
-           [:div {:class "flex flex-row"}]
-           (for [c line]
-             [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1 text-center"
-                            #_(if c "bg-white" "bg-black")]}
-              (str c)])))]]))))
+      [:div {:id "scan-overlay" :class "absolute top-0 left-0 opacity-30"}
+       (map-indexed (fn [idx detection]
+              [:scan-canvas {:class "absolute top-0 left-0"
+                             :width 800 :height 400 :pixel-size 8
+                             :base-color (rand-nth colors) ;; (get-color idx)
+                             :pixels (flatten detection)}])
+            detections)]))))
 
 (defn ->known-invaders []
   (h/html
@@ -270,29 +282,25 @@
 
 (defn update-state! []
   (update-invaders!)
-  (update-scan!)
-  (update-detections-overlay!))
+  (update-scan!))
 
 (defn connect [request]
-  (let [d (-> request get-signals (get "delay") int)]
-    (->sse-response
-     request
-     {on-open
-      (fn [sse]
-        (swap! conns conj sse)
-        (update-state!)
+  (->sse-response
+   request
+   {on-open
+    (fn [sse]
+      (swap! conns conj sse)
+      (update-state!)
 
-        (d*/execute-script! sse "loadingsound.play()")
-        (d*/execute-script! sse "connectbutton.classList.add(\"hidden\"); ")
-        (d*/execute-script! sse "scanbutton.classList.remove(\"hidden\")"))
-
-        #_(d*/with-open-sse sse
-          )
-      on-close
-      (fn [sse status-code]
-        (swap! conns disj sse)
-        ; (d*/execute-script! sse "connectbutton.classList.remove(\"hidden\")")
-        (println "Connection closed status: " status-code))})))
+      (d*/execute-script! sse "loadingsound.play()")
+      (d*/execute-script! sse "connectbutton.classList.add(\"hidden\"); ")
+      (d*/execute-script! sse "scanbutton.classList.remove(\"hidden\")")
+      #_(d*/with-open-sse sse))
+    on-close
+    (fn [sse status-code]
+      (swap! conns disj sse)
+      ; (d*/execute-script! sse "connectbutton.classList.remove(\"hidden\")")
+      (println "Connection closed status: " status-code))}))
 
 
 (defn scan [request]
@@ -301,7 +309,7 @@
    {on-open
     (fn [sse]
       (d*/execute-script! sse "pingsound.play()")
-      )
+      (update-detections-overlay!))
     on-close
     (fn [sse status-code])}))
 
