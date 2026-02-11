@@ -23,7 +23,7 @@
 
          matches (map-indexed
                   (fn [idx t]
-                    (let [s (nth source' idx)]
+                    (let [s (nth source' idx nil)]
                       ;; Potentially need to use some sort of tiered matching
                       ;; algorithm, taking into account the nature of the radar
                       ;; noise (maybe false positives are much more probable
@@ -45,8 +45,8 @@
          matched-bits (apply + matches)]
      ;; normalizing
      ;; should ideally be 1 when all bits match cleanly
-     (float (/ matched-bits template-bits)))
-   ;; I'm expecting some weird out of bounds access errors at some poitn
+     (/ matched-bits template-bits))
+   ;; I'm expecting some weird out of bounds access errors at some point
    (catch Exception e
      (println "Error: " e)
      ;; return 0 score if failed
@@ -117,8 +117,8 @@
                                              (update-detection-matrix det col-idx row-idx invader-w invader-h))
                                             det)))
                                       detections
-                                      (range (- (count (first matrix')) invader-w))))
-                            (range (- (count matrix') invader-h)))
+                                      (range (- (count (first matrix')) (dec invader-w)))))
+                            (range (- (count matrix') (dec invader-h))))
 
         detection-matrix (apply sum-matrices detection-matrices)]
 

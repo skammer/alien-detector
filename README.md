@@ -2,6 +2,8 @@
 
 Using clojure, Datastar and http-kit
 
+![UI](screenshots/screenshot.png)
+
 ## Running
 
 - repl:
@@ -14,6 +16,12 @@ clojure -M:repl -m nrepl.cmdline --middleware "[cider.nrepl/cider-middleware]"
 
 ```bash
 clojure -M -m scanner
+```
+
+- tests:
+
+```
+clj -Mtest
 ```
 
 ## How to use
