@@ -41,7 +41,7 @@
     (map #(concat prefix % suffix) matrix)))
 
 (defn pad-around
-  "Expects a normalized matrix"
+  "Adds nil padding around the matrix. Expects a normalized matrix."
   ([matrix] matrix)
   ([matrix pad] (pad-around matrix pad pad pad pad))
   ([matrix pad-y pad-x] (pad-around matrix pad-y pad-x pad-y pad-x))
@@ -50,11 +50,30 @@
        (pad-y pad-t pad-b)
        (pad-x pad-l pad-r))))
 
-(comment 
+(defn trim-y [matrix trim-t trim-b]
+  (->> matrix
+       (drop trim-t)
+       (take (- (count matrix) trim-t trim-b))))
+
+(defn trim-x [matrix trim-l trim-r]
+  (map #(trim-y % trim-l trim-r) matrix))
+
+(defn trim-around
+  "Removes outside rows/cols. Expects a normalized matrix."
+  ([matrix] matrix)
+  ([matrix trim] (trim-around matrix trim trim trim trim))
+  ([matrix trim-y trim-x] (trim-around matrix trim-y trim-x trim-y trim-x))
+  ([matrix trim-t trim-r trim-b trim-l]
+   (-> matrix
+       (trim-y trim-t trim-b)
+       (trim-x trim-l trim-r))))
+
+(comment
  (parse-file "./known-invaders/1.txt")
  (parse-file "./known-invaders/2.txt")
  (parse-file "./radar-scans/01.txt")
 
  (pad-y (parse-file "./known-invaders/1.txt") 2 3)
  (pad-x (parse-file "./known-invaders/1.txt") 2 3)
- (pad-around (parse-file "./known-invaders/1.txt") 2))
+ (pad-around (parse-file "./known-invaders/1.txt") 2)
+ (trim-around (parse-file "./known-invaders/1.txt") 2 1))

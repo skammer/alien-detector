@@ -59,11 +59,125 @@
 
 ;; Scan:
 ;; * pad
-;; * start matching
-;; * compare threshold
-;; * mark all pixels as match if above threshold
-;; * draw heat map
+;; * iterate offset
+;; * get chunk from matrix
+;; * compare chunk with invader
+;; * chec if above threshold
+;; * write chunk to detections matrix
+;; * trim detection matrix
+;; * draw heat map from detection matrix
 ;; * find peaks, save as probable locations
+
+
+(defn initialize-zero [matrix]
+  (let [h (count matrix)
+        w (count (first matrix))]
+    (take h (repeat (take w (repeat 0))))))
+
+(defn get-matrix-chunk [matrix x-offset y-offset x-size y-size]
+  (let [;; first crop off the top and left bits we don't need
+        trimmed-top-left (ascii-parser/trim-around matrix (dec y-offset) 0 0 (dec x-offset))
+        ;; now trim the bottom rows
+        necessary-rows (take y-size trimmed-top-left)]
+    ;; and now just take the necessary row elements
+    (map #(take x-size %) necessary-rows)))
+
+(defn compare-chunks [template source]
+  ;; Comparing template and source as if they are just a bunch of bits
+  (try
+   (let [template' (flatten template)
+         source' (flatten source)
+
+         matches (map-indexed (fn [idx t]
+                                (let [s (nth source' idx)]
+                                  ;; Potentially need to use some sort of tiered matching algorithm, taking into account
+                                  ;; the nature of the radar noise (maybe false positives are much more probable than false
+                                  ;; negatives? no idea)
+                                  (cond
+                                   ;; if template bit is high and it matches the source, it's the highest match possible
+                                   (and t (= t s)) 1
+                                   ;; if both template and detected bit are low and we expected low, also high match
+                                   (and (not t) (= t s)) 1
+                                   ;; all other cases we consider a miss
+                                   :else 0)))
+                              template')
+
+         template-bits (count template')
+         matched-bits (apply + matches)]
+     ;; normalizing
+     ;; should ideally be 1 when all bits match cleanly
+     (float (/ matched-bits template-bits)))
+   ;; I'm expecting some weird out of bounds access errors at some poitn
+   (catch Exception e
+     (println "Error: " e)
+     ;; return 0 score if failed
+     0)))
+
+
+(defn update-detection-matrix [detection-matrix offset-x offset-y size-x size-y]
+  (let [h (count detection-matrix)
+        w (count (first detection-matrix))
+
+        flat-list (flatten detection-matrix)
+
+        updated-list (map-indexed (fn [idx el]
+                                    (let [current-row (int (/ idx w))
+                                          matching-row (and (<= offset-y current-row)
+                                                            (> (+ offset-y size-y) current-row))
+                                          current-col (mod idx w)
+                                          matching-col (and (<= offset-x current-col)
+                                                            (> (+ offset-x size-x) current-col))]
+                                      (if (and matching-row matching-col)
+                                        (inc el)
+                                        el)))
+                                  flat-list)]
+    (partition w updated-list)))
+
+(comment
+ (update-detection-matrix [[0 0 0 0] [0 0 0 0] [0 0 0 0] [0 0 0 0]] 2 1 2 2))
+
+
+(defonce tmp (atom #{}))
+
+(defn detect [matrix invader]
+  (let [invader-h (count invader)
+        invader-w (count (first invader))
+
+        ;; Add padding around the matrix so that we start comparing with the bottom
+        ;; row of invader and end with top player, same with right and left.
+        matrix' (ascii-parser/pad-around matrix (dec invader-h) (dec invader-w))
+
+        detections (initialize-zero matrix')
+        
+        detection-matrix (reduce (fn [det row-idx]
+                                   ;; go row by row, comparing invader with matrix chunks
+
+                                   (reduce (fn [det col-idx]
+                                             (let [chunk (get-matrix-chunk matrix' col-idx row-idx invader-w invader-h)
+                                                   similarity (compare-chunks invader chunk)
+                                                   threshold 0.8]
+                                               ; det
+                                               (if (> similarity threshold)
+                                                 (update-detection-matrix det col-idx row-idx invader-w invader-h)
+                                                 det)))
+                                           det
+                                           (range (- (count (first matrix')) invader-w))))
+                                 detections
+                                 (range (- (count matrix') invader-h)))]
+
+    (ascii-parser/trim-around detection-matrix (dec invader-h) (dec invader-w))))
+
+(defn a []
+  (detect radar-scan (first @invaders))
+  "ok"
+  )
+
+(comment
+ (a))
+
+(println (sort @tmp))
+
+
 
 
 (def PORT 8099)
@@ -100,6 +214,20 @@
                             (if c "bg-white" "bg-black") ]}])))]
        [:pre {:class "opacity-40 text-sm mt-1"} (sha1-hash (str total-dots))]]))))
 
+(defn ->detections-overlay []
+  (let [detections (detect radar-scan (first @invaders))]
+    (h/html
+     (hc/compile
+      [:div {:id "scan-overlay" :class "absolute top-0 left-0 "}
+       [:div {:class "text-amber-700 text-[5px]"}
+        (for [line detections]
+          (into
+           [:div {:class "flex flex-row"}]
+           (for [c line]
+             [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1 text-center"
+                            #_(if c "bg-white" "bg-black")]}
+              (str c)])))]]))))
+
 (defn ->known-invaders []
   (h/html
    (hc/compile
@@ -129,9 +257,18 @@
       (catch Exception e
         (println "Error: " e)))))
 
+(defn update-detections-overlay! []
+  (doseq [sse @conns]
+    (try
+      (d*/console-log! sse "Scanned for invaders")
+      (d*/patch-elements! sse (->detections-overlay))
+      (catch Exception e
+        (println "Error: " e)))))
+
 (defn update-state! []
   (update-invaders!)
-  (update-scan!))
+  (update-scan!)
+  (update-detections-overlay!))
 
 (defn connect [request]
   (let [d (-> request get-signals (get "delay") int)]
