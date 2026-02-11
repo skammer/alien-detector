@@ -21,10 +21,18 @@
       (apply str (map #(format "%02x" %) hash-bytes)))))
 
 (declare update-invaders!)
+(declare update-detections!)
+(declare update-crosshair!)
 
 (defonce conns (atom #{}))
 (defonce invaders (atom #{}))
 (defonce space-scan (atom nil))
+(defonce current-detections (atom #{}))
+(defonce crosshair (atom nil))
+
+(add-watch current-detections :watcher
+           (fn [key atom old-state new-state]
+             (update-detections!)))
 
 (defn parse-invaders []
   (let [invader-directory (io/file "known-invaders/")
@@ -168,8 +176,9 @@
                                             ;; TODO: only update high bits of the invader template
                                             ;; This way we can get cleaner output match image
 
-                                            ;; TODO: store match location in an atom for later (invader, location)
-                                            (update-detection-matrix det col-idx row-idx invader-w invader-h)
+                                            (do
+                                             (swap! current-detections conj [invader col-idx row-idx])
+                                             (update-detection-matrix det col-idx row-idx invader-w invader-h))
                                             det)))
                                       detections
                                       (range (- (count (first matrix')) invader-w))))
@@ -221,9 +230,29 @@
 (def colors
   ["#FFD166"
    "#00F5FF"
-  "#3AFF7A"
-  "#FF4D6D"
-  "#7B61FF"])
+   "#3AFF7A"
+   "#FF4D6D"
+   "#7B61FF"
+   "#00E5FF"
+   "#18FFFF"
+   "#1DE9B6"
+   "#00FF9C"
+   "#39FF14"
+   "#A4FF00"
+   "#FFD300"
+   "#FFB000"
+   "#FF9100"
+   "#FF6D00"
+   "#FF3D81"
+   "#FF1744"
+   "#FF005D"
+   "#E040FB"
+   "#B388FF"
+   "#7C4DFF"
+   "#536DFE"
+   "#448AFF"
+   "#40C4FF"
+   "#64FFDA"])
 
 (defn get-color [idx]
   (let [total-colors (count colors)
@@ -231,7 +260,8 @@
     (nth colors color-index)))
 
 (defn ->detections-overlay []
-  (let [detections (pmap (partial detect radar-scan) @invaders)]
+  (let [_ (reset! current-detections #{}) ;; clear old detections
+        detections (pmap (partial detect radar-scan) @invaders)]
     (h/html
      (hc/compile
       [:div {:id "scan-overlay" :class "absolute top-0 left-0 opacity-50"}
@@ -254,6 +284,27 @@
            (for [c line]
              [:div {:class ["h-2 w-2 outline-1 outline-black -outline-offset-1"
                             (if c "bg-white" "bg-black")]}])))])])))
+
+(defn ->detections []
+  (h/html
+   (hc/compile
+    [:div {:id "identified-invaders" :class "flex flex-col flex-wrap overflow-y-scroll content-start"}
+     (for [[invader x y] @current-detections]
+       (let [h (count invader)
+             w (count (first invader))
+             x' (- x (int  (/ w 2)))
+             y' (- y (int (/ h 2)))]
+         [:p {:class "text-white cursor-pointer hover:text-amber-700 w-[200px] shrink"
+              :data-on:click (d*/sse-post (str "/target/" x' "/" y'))}
+          (str "✦ [" x' "," y' "]")]))])))
+
+(defn update-detections! []
+  (doseq [sse @conns]
+    (try
+      (d*/console-log! sse "Updated identified threats")
+      (d*/patch-elements! sse (->detections))
+      (catch Exception e
+        (println "Error: " e)))))
 
 (defn update-invaders! []
   (doseq [sse @conns]
@@ -307,9 +358,40 @@
    {on-open
     (fn [sse]
       (d*/with-open-sse sse
-        (d*/execute-script! sse "pingsound.stop()")
+        (d*/execute-script! sse "pingsound.pause()")
         (d*/execute-script! sse "pingsound.play()")
+        (update-crosshair! sse {:x nil :y nil})
         (update-detections-overlay! sse)))
+    on-close
+    (fn [sse status-code])}))
+
+(defn ->crosshair-overlay [{:keys [x y]}]
+  (h/html
+   (hc/compile
+    [:div {:id "crosshair-overlay" :class "flex flex-col flex-wrap overflow-y-scroll"}
+     (when x
+       ;; Yes, read-string is definitely not safe, but we aren't exactly working with financial data here are we?
+       [:div {:class ["absolute w-[8px] h-[400px] bg-fuchsia-600 top-0"
+                      "animate-pulse"
+                      (str "left-[" (* (read-string x) 8) "px]")]}])
+     (when y
+       [:div {:class ["absolute w-[800px] h-[8px] bg-fuchsia-600 left-0"
+                      "animate-pulse"
+                      (str "top-[" (* (read-string y) 8) "px]")]}])])))
+
+(defn update-crosshair! [sse params]
+  (try
+   (d*/patch-elements! sse (->crosshair-overlay params))
+   (catch Exception e
+     (println "Error: " e))))
+
+(defn set-crosshair [request]
+  (->sse-response
+   request
+   {on-open
+    (fn [sse]
+      (d*/with-open-sse sse
+        (update-crosshair! sse (:path-params request))))
     on-close
     (fn [sse status-code])}))
 
@@ -319,6 +401,11 @@
                 :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]
    ["/scan" {:handler    scan
              :middleware [reitit.ring.middleware.parameters/parameters-middleware]}]
+   ["/target/:x/:y" {:handler    set-crosshair
+                     :middleware [reitit.ring.middleware.parameters/parameters-middleware]
+                     :parameters {:path {:x int?
+                                         :y int?}}}]
+
    ["/public/*" (reitit.ring/create-resource-handler)]])
 
 (def router (reitit.ring/router routes))
