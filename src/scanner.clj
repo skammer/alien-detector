@@ -223,8 +223,7 @@
    "#00F5FF"
   "#3AFF7A"
   "#FF4D6D"
-  "#7B61FF"
-  "#5C677D"])
+  "#7B61FF"])
 
 (defn get-color [idx]
   (let [total-colors (count colors)
@@ -232,10 +231,10 @@
     (nth colors color-index)))
 
 (defn ->detections-overlay []
-  (let [detections (map (partial detect radar-scan) @invaders)]
+  (let [detections (pmap (partial detect radar-scan) @invaders)]
     (h/html
      (hc/compile
-      [:div {:id "scan-overlay" :class "absolute top-0 left-0 opacity-30"}
+      [:div {:id "scan-overlay" :class "absolute top-0 left-0 opacity-50"}
        (map-indexed (fn [idx detection]
               [:scan-canvas {:class "absolute top-0 left-0"
                              :width 800 :height 400 :pixel-size 8
@@ -272,13 +271,12 @@
       (catch Exception e
         (println "Error: " e)))))
 
-(defn update-detections-overlay! []
-  (doseq [sse @conns]
-    (try
-      (d*/console-log! sse "Scanned for invaders")
-      (d*/patch-elements! sse (->detections-overlay))
-      (catch Exception e
-        (println "Error: " e)))))
+(defn update-detections-overlay! [sse]
+  (try
+   (d*/console-log! sse "Scanned for invaders")
+   (d*/patch-elements! sse (->detections-overlay))
+   (catch Exception e
+     (println "Error: " e))))
 
 (defn update-state! []
   (update-invaders!)
@@ -308,8 +306,10 @@
    request
    {on-open
     (fn [sse]
-      (d*/execute-script! sse "pingsound.play()")
-      (update-detections-overlay!))
+      (d*/with-open-sse sse
+        (d*/execute-script! sse "pingsound.stop()")
+        (d*/execute-script! sse "pingsound.play()")
+        (update-detections-overlay! sse)))
     on-close
     (fn [sse status-code])}))
 
