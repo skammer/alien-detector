@@ -158,6 +158,9 @@
                                                    threshold 0.8]
                                                ; det
                                                (if (> similarity threshold)
+                                                 ;; TODO: only update high bits of the invader template
+                                                 ;; This way we can get cleaner output match image
+                                                 ;; TODO: store match location in an atom for later
                                                  (update-detection-matrix det col-idx row-idx invader-w invader-h)
                                                  det)))
                                            det
