@@ -279,7 +279,7 @@
         (update-crosshair! sse {:x nil :y nil})
         ;; Need to give it some time for changes to propagate
         ;; Smells like a hack, looks like hack...
-        (Thread/sleep 200)
+        (Thread/sleep 100)
         (update-detections-overlay! sse)))
     on-close
     (fn [sse status-code])}))
