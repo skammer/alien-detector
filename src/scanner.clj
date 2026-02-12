@@ -2,6 +2,7 @@
   (:require
    [ascii-parser]
    [detector]
+   [radar]
    [charred.api]
    [clojure.java.io :as io]
    [dev.onionpancakes.chassis.compiler :as hc]
@@ -27,12 +28,26 @@
 (declare update-invaders!)
 (declare update-detections!)
 (declare update-crosshair!)
+(declare update-scan!)
 
 (defonce conns (atom #{}))
 (defonce invaders (atom #{}))
 (defonce space-scan (atom nil))
 (defonce current-detections (atom #{}))
 (defonce crosshair (atom nil))
+(defonce radar-scan (atom nil))
+
+
+(def h 50)
+(def w 100)
+
+(comment
+ (apply max (map count @invaders))
+ (apply max (map (comp count first) @invaders))
+
+ (first @invaders)
+
+ (radar/store-scan (radar/scan h w @invaders)))
 
 (add-watch current-detections :watcher
            (fn [key atom old-state new-state]
@@ -45,27 +60,54 @@
                                 (ascii-parser/parse-file (.getAbsolutePath file)))
                               invader-files)]
     (println "Updated invaders database: " (count scanned-invaders))
-    (reset! invaders (set scanned-invaders))))
+    (reset! invaders (set scanned-invaders))
+    nil))
 
 
-(def scan-directory (io/file "radar-scans/"))
-(def scan-files (filter #(.isFile %) (file-seq scan-directory)))
-(def radar-scan
-  (doall (ascii-parser/parse-file (first scan-files))) )
+(defn parse-radar-scans [radar-scan]
+  (let [all-scans (filter #(.isFile %) (file-seq (io/file "radar-scans/")))
+        ;; may need to rethink this and just pick the most recent one
+        ;; but for the time being I just expect the 000.txt to be the
+        ;; most recently updated, generated scan
+        selected-scan (last all-scans)
+        parsed-scan (ascii-parser/parse-file selected-scan)]
+    (println "Updated radar data")
+    (reset! radar-scan parsed-scan)
+    nil))
 
 ;; Initialize invaders DB
 (parse-invaders invaders)
 
+;; And the radar data
+(parse-radar-scans radar-scan)
+
+;; handler functions need to have an argument, otherwise they fail with
+;; a silenced exception
+(defn invader-change-handler [_]
+  (parse-invaders invaders)
+  (update-invaders!))
+
 ;; And keep waching the directory for new definitions
 (def invader-watcher
   (beholder/watch
-   (fn []
-     (parse-invaders invaders)
-     (update-invaders!))
+   invader-change-handler
    "known-invaders"))
 
+;; handler functions need to have an argument, otherwise they fail with
+;; a silenced exception
+(defn radar-change-handler [_]
+  (parse-radar-scans radar-scan)
+  (update-scan!)
+  (update-detections!))
+
+(def radar-watcher
+  (beholder/watch
+   radar-change-handler
+   "radar-scans"))
+
 (comment
- (beholder/stop invader-watcher))
+ (beholder/stop invader-watcher)
+ (beholder/stop radar-watcher))
 
 
 ;; ------------------------------------------------------------
@@ -88,7 +130,7 @@
 (def message "Hello, world!")
 
 (defn ->scanner []
-  (let [total-dots (->> radar-scan
+  (let [total-dots (->> @radar-scan
                        flatten
                        (filter true?)
                        count)]
@@ -96,7 +138,7 @@
      (hc/compile
       [:div {:id "scanner" :class "w-[800px] h-[400px]"}
        [:scan-canvas {:width 800 :height 400 :pixel-size 8 :base-color "#ffffff"
-                      :pixels (mapv (fn [px] (if px 1 0)) (flatten radar-scan))}]
+                      :pixels (mapv (fn [px] (if px 1 0)) (flatten @radar-scan))}]
 
        [:pre {:class "opacity-40 text-sm mt-1"} (sha1-hash (str total-dots))]]))))
 
@@ -134,7 +176,7 @@
 
 (defn ->detections-overlay []
   (let [_ (reset! current-detections #{}) ;; clear old detections
-        detections (pmap (partial detector/detect current-detections radar-scan) @invaders)]
+        detections (pmap (partial detector/detect current-detections @radar-scan) @invaders)]
     (h/html
      (hc/compile
       [:div {:id "scan-overlay" :class "absolute top-0 left-0 opacity-50"}
@@ -230,10 +272,14 @@
    request
    {on-open
     (fn [sse]
+      (radar/store-scan (radar/scan h w @invaders))
       (d*/with-open-sse sse
         (d*/execute-script! sse "pingsound.pause()")
         (d*/execute-script! sse "pingsound.play()")
         (update-crosshair! sse {:x nil :y nil})
+        ;; Need to give it some time for changes to propagate
+        ;; Smells like a hack, looks like hack...
+        (Thread/sleep 200)
         (update-detections-overlay! sse)))
     on-close
     (fn [sse status-code])}))

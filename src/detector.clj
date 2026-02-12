@@ -107,7 +107,7 @@
                               (reduce (fn [det col-idx]
                                         (let [chunk (get-matrix-chunk matrix' col-idx row-idx invader-w invader-h)
                                               similarity (compare-chunks invader chunk)
-                                              threshold 0.8]
+                                              threshold 0.75]
                                           (if (> similarity threshold)
                                             ;; TODO: only update high bits of the invader template
                                             ;; This way we can get cleaner output match image
